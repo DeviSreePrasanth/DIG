@@ -1,38 +1,42 @@
-# Deployed values (actual resources created)
+# Deployed values (centralized DSF hub architecture)
 
-GCP infrastructure for the WIF POC is live. These are the real IDs.
+All WIF + Artifact Registry live in the **DSF hub** projects. App projects
+(`dig-*`, `etp-*`) hold no WIF/AR — they are where app runtime would live later.
 
-## Projects
+## Hub projects (hold WIF + Artifact Registry)
 | Env | Project ID | Project number |
 |-----|-----------|----------------|
-| dev | `dig-dev-poc` | `646296190677` |
-| prod | `dig-prod-poc` | `107752456095` |
+| dev | `dsf-dev-poc` | `637530616995` |
+| prod | `dsf-prod-poc` | `1083911620746` |
 
-Billing account linked: `01D097-FAD10A-041E97` (billingEnabled: true on both).
+Billing account: `01D097-FAD10A-041E97`.
 
-## Artifact Registry (generic, location `us`)
-- `us-generic.pkg.dev/dig-dev-poc/dbt-artifacts`
-- `us-generic.pkg.dev/dig-prod-poc/dbt-artifacts`
+## App projects (placeholders, billing unlinked in POC)
+`dig-dev-poc`, `dig-prod-poc`, `etp-dev-poc`, `etp-prod-poc`
 
-## Service account (single, lives in dig-dev-poc)
-- `gha-dbt@dig-dev-poc.iam.gserviceaccount.com`
-- Roles in BOTH projects: `roles/artifactregistry.writer`, `roles/storage.objectAdmin`
-- Impersonation: `roles/iam.workloadIdentityUser` from both pools' `principalSet` for repo `DeviSreePrasanth/DIG`
+## Artifact Registry (generic, location `us`) — all in the hub
+| Repo | dev | prod |
+|------|-----|------|
+| DIG dbt | `us-generic.pkg.dev/dsf-dev-poc/dig-dbt` | `us-generic.pkg.dev/dsf-prod-poc/dig-dbt` |
+| ETP dbt | `us-generic.pkg.dev/dsf-dev-poc/etp-dbt` | `us-generic.pkg.dev/dsf-prod-poc/etp-dbt` |
 
-## WIF providers (use these in GitHub Actions variables)
+## Central service account (single, in dsf-dev-poc)
+- `gha-publisher@dsf-dev-poc.iam.gserviceaccount.com`
+- Roles in BOTH hub projects: `roles/artifactregistry.writer`, `roles/storage.objectAdmin`
+- Impersonation (`workloadIdentityUser`) from both hub pools, for repos `DeviSreePrasanth/DIG` and `DeviSreePrasanth/ETP`
+
+## WIF providers (used by both DIG and ETP workflows)
 | Var | Value |
 |-----|-------|
-| `DEV_PROJECT_ID` | `dig-dev-poc` |
-| `PROD_PROJECT_ID` | `dig-prod-poc` |
-| `DEV_WIP` | `projects/646296190677/locations/global/workloadIdentityPools/github-pool/providers/github` |
-| `PROD_WIP` | `projects/107752456095/locations/global/workloadIdentityPools/github-pool/providers/github` |
-| `SERVICE_ACCOUNT` | `gha-dbt@dig-dev-poc.iam.gserviceaccount.com` |
-| `AR_LOCATION` | `us` |
+| `DEV_WIP` | `projects/637530616995/locations/global/workloadIdentityPools/github-pool/providers/github` |
+| `PROD_WIP` | `projects/1083911620746/locations/global/workloadIdentityPools/github-pool/providers/github` |
+| `SERVICE_ACCOUNT` | `gha-publisher@dsf-dev-poc.iam.gserviceaccount.com` |
 
-## Trust conditions (attribute-condition on each provider)
-- DEV provider trusts: `repository_owner=='DeviSreePrasanth' && repository=='DeviSreePrasanth/DIG' && ref=='refs/heads/main'`
-- PROD provider trusts: `repository_owner=='DeviSreePrasanth' && repository=='DeviSreePrasanth/DIG' && ref=='refs/heads/release'`
+## Trust conditions (attribute-condition per provider)
+- dev provider (dsf-dev-poc): `repository_owner=='DeviSreePrasanth' && repository in ['DeviSreePrasanth/DIG','DeviSreePrasanth/ETP'] && ref=='refs/heads/main'`
+- prod provider (dsf-prod-poc): `... && ref=='refs/heads/release'`
 
-> Note: the `repository` claim is case-sensitive. The repo must be created as
-> `DeviSreePrasanth/DIG` (matching case). If you create it lowercase, update the
-> two providers' attribute-conditions accordingly.
+## Per-repo workflow setting
+Each app repo's workflow sets `AR_REPO` to its own hub repo:
+- DIG → `AR_REPO: dig-dbt`
+- ETP → `AR_REPO: etp-dbt`
