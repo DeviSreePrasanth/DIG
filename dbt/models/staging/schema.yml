@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: "Example staging model with inline seed data."
+    columns:
+      - name: customer_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: full_name
+        description: "First + last name."
+
+  - name: customer_summary
+    description: "Aggregate summary built on stg_customers."

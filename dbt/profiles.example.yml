@@ -1,0 +1,13 @@
+# Example dbt profile. This is NOT used by the WIF pipeline (the pipeline only
+# packages and uploads this folder to Artifact Registry). It exists so the dbt
+# project is runnable locally if you want to test the models.
+dsf_wif_poc:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: dsf_wif_poc_dev
+      location: US
+      threads: 4

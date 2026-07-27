@@ -1,0 +1,25 @@
+name: 'dsf_wif_poc'
+version: '1.0.0'
+config-version: 2
+
+# This profile name maps to a profile in profiles.yml (see profiles.example.yml).
+profile: 'dsf_wif_poc'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  dsf_wif_poc:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

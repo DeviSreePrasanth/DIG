@@ -1,0 +1,83 @@
+name: Publish DBT to Artifact Registry
+
+# main    -> pushes to the DEV project  (dig-dev-poc)
+# release -> pushes to the PROD project (dig-prod-poc)
+on:
+  push:
+    branches: [main, release]
+  workflow_dispatch:
+
+# Required for Workload Identity Federation: lets the job mint an OIDC token.
+permissions:
+  id-token: write
+  contents: read
+
+# Non-secret resource identifiers (safe to hardcode).
+env:
+  DEV_PROJECT_ID: dig-dev-poc
+  PROD_PROJECT_ID: dig-prod-poc
+  DEV_WIP: projects/646296190677/locations/global/workloadIdentityPools/github-pool/providers/github
+  PROD_WIP: projects/107752456095/locations/global/workloadIdentityPools/github-pool/providers/github
+  SERVICE_ACCOUNT: gha-dbt@dig-dev-poc.iam.gserviceaccount.com
+  AR_LOCATION: us
+
+jobs:
+  publish-dbt:
+    runs-on: ubuntu-latest
+
+    # A 'release' push maps to the 'prod' environment. Add required reviewers
+    # in Settings > Environments > prod to gate production.
+    environment: ${{ github.ref == 'refs/heads/release' && 'prod' || 'dev' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pick target project + WIF provider based on the branch.
+      - name: Resolve target environment
+        id: env
+        run: |
+          if [ "${GITHUB_REF}" = "refs/heads/release" ]; then
+            echo "project=${PROD_PROJECT_ID}" >> "$GITHUB_OUTPUT"
+            echo "wip=${PROD_WIP}"             >> "$GITHUB_OUTPUT"
+            echo "env_name=prod"               >> "$GITHUB_OUTPUT"
+          else
+            echo "project=${DEV_PROJECT_ID}"   >> "$GITHUB_OUTPUT"
+            echo "wip=${DEV_WIP}"              >> "$GITHUB_OUTPUT"
+            echo "env_name=dev"                >> "$GITHUB_OUTPUT"
+          fi
+
+      # Exchanges the GitHub OIDC token for a short-lived token, then
+      # impersonates the single service account. No key file involved.
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ steps.env.outputs.project }}
+          workload_identity_provider: ${{ steps.env.outputs.wip }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Package the dbt folder
+        id: pkg
+        run: |
+          VERSION="$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          tar -czf "dbt-${VERSION}.tar.gz" -C dbt .
+          echo "Built dbt-${VERSION}.tar.gz"
+
+      - name: Upload dbt artifact to Artifact Registry (generic repo)
+        run: |
+          gcloud artifacts generic upload \
+            --project="${{ steps.env.outputs.project }}" \
+            --location="${AR_LOCATION}" \
+            --repository="dbt-artifacts" \
+            --package="dsf-dbt" \
+            --version="${{ steps.pkg.outputs.version }}" \
+            --source="dbt-${{ steps.pkg.outputs.version }}.tar.gz"
+
+      - name: Summary
+        run: |
+          echo "Published dsf-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "to ${{ steps.env.outputs.env_name }} project ${{ steps.env.outputs.project }}" >> "$GITHUB_STEP_SUMMARY"

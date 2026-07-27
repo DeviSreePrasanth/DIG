@@ -1,0 +1,11 @@
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+profiles.yml
+
+# build artifacts
+*.tar.gz
+
+# local
+.env
