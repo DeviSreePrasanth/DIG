@@ -1,7 +1,8 @@
 name: Publish DBT to Artifact Registry
 
-# main    -> pushes to the DEV project  (dig-dev-poc)
-# release -> pushes to the PROD project (dig-prod-poc)
+# Centralized model: all WIF + Artifact Registry live in the DSF hub projects.
+# main    -> dsf-dev-poc  (dig-dbt repo)
+# release -> dsf-prod-poc (dig-dbt repo)
 on:
   push:
     branches: [main, release]
@@ -12,14 +13,15 @@ permissions:
   id-token: write
   contents: read
 
-# Non-secret resource identifiers (safe to hardcode).
+# Non-secret resource identifiers (safe to hardcode). WIF + AR are in the DSF hub.
 env:
-  DEV_PROJECT_ID: dig-dev-poc
-  PROD_PROJECT_ID: dig-prod-poc
-  DEV_WIP: projects/646296190677/locations/global/workloadIdentityPools/github-pool/providers/github
-  PROD_WIP: projects/107752456095/locations/global/workloadIdentityPools/github-pool/providers/github
-  SERVICE_ACCOUNT: gha-dbt@dig-dev-poc.iam.gserviceaccount.com
+  DEV_PROJECT_ID: dsf-dev-poc
+  PROD_PROJECT_ID: dsf-prod-poc
+  DEV_WIP: projects/637530616995/locations/global/workloadIdentityPools/github-pool/providers/github
+  PROD_WIP: projects/1083911620746/locations/global/workloadIdentityPools/github-pool/providers/github
+  SERVICE_ACCOUNT: gha-publisher@dsf-dev-poc.iam.gserviceaccount.com
   AR_LOCATION: us
+  AR_REPO: dig-dbt
 
 jobs:
   publish-dbt:
@@ -33,7 +35,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Pick target project + WIF provider based on the branch.
+      # Pick target DSF project + WIF provider based on the branch.
       - name: Resolve target environment
         id: env
         run: |
@@ -51,7 +53,7 @@ jobs:
           fi
 
       # Exchanges the GitHub OIDC token for a short-lived token, then
-      # impersonates the single service account. No key file involved.
+      # impersonates the central service account. No key file involved.
       - name: Authenticate to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
@@ -75,12 +77,12 @@ jobs:
           gcloud artifacts generic upload \
             --project="${{ steps.env.outputs.project }}" \
             --location="${AR_LOCATION}" \
-            --repository="dbt-artifacts" \
-            --package="dsf-dbt" \
+            --repository="${AR_REPO}" \
+            --package="dig-dbt" \
             --version="${{ steps.pkg.outputs.version }}" \
             --source="dbt-${{ steps.pkg.outputs.version }}.tar.gz"
 
       - name: Summary
         run: |
-          echo "Published dsf-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "to ${{ steps.env.outputs.env_name }} project ${{ steps.env.outputs.project }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published dig-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "to ${{ steps.env.outputs.env_name }} hub project ${{ steps.env.outputs.project }} (repo ${AR_REPO})" >> "$GITHUB_STEP_SUMMARY"
