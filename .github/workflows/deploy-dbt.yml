@@ -37,14 +37,17 @@ jobs:
       - name: Resolve target environment
         id: env
         run: |
-          if [ "${GITHUB_REF}" = "refs/heads/release" ]; then
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "project=${DEV_PROJECT_ID}"   >> "$GITHUB_OUTPUT"
+            echo "wip=${DEV_WIP}"              >> "$GITHUB_OUTPUT"
+            echo "env_name=dev"                >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_REF}" = "refs/heads/release" ]; then
             echo "project=${PROD_PROJECT_ID}" >> "$GITHUB_OUTPUT"
             echo "wip=${PROD_WIP}"             >> "$GITHUB_OUTPUT"
             echo "env_name=prod"               >> "$GITHUB_OUTPUT"
           else
-            echo "project=${DEV_PROJECT_ID}"   >> "$GITHUB_OUTPUT"
-            echo "wip=${DEV_WIP}"              >> "$GITHUB_OUTPUT"
-            echo "env_name=dev"                >> "$GITHUB_OUTPUT"
+            echo "Unsupported branch: ${GITHUB_REF} - refusing to deploy." >&2
+            exit 1
           fi
 
       # Exchanges the GitHub OIDC token for a short-lived token, then
