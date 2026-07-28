@@ -21,7 +21,8 @@ env:
   PROD_WIP: projects/1083911620746/locations/global/workloadIdentityPools/github-pool/providers/github
   SERVICE_ACCOUNT: gha-publisher@dsf-dev-poc.iam.gserviceaccount.com
   AR_LOCATION: us
-  AR_REPO: dig-dbt
+  AR_REPO: dbt          # one shared repo for all apps
+  PACKAGE: dig          # this app's package within the dbt repo
   # Module name namespaces this repo's models inside the shared Composer bucket.
   MODULE: dig
   DEV_BUCKET: dsf-dev-poc-composer-dbt
@@ -84,7 +85,7 @@ jobs:
             --project="${{ steps.env.outputs.project }}" \
             --location="${AR_LOCATION}" \
             --repository="${AR_REPO}" \
-            --package="dig-dbt" \
+            --package="${PACKAGE}" \
             --version="${{ steps.pkg.outputs.version }}" \
             --source="dbt-${{ steps.pkg.outputs.version }}.tar.gz"
 
@@ -100,7 +101,7 @@ jobs:
           set -e
           LATEST="$(gcloud artifacts versions list \
             --project='${{ steps.env.outputs.project }}' --location="${AR_LOCATION}" \
-            --repository="${AR_REPO}" --package="${AR_REPO}" \
+            --repository="${AR_REPO}" --package="${PACKAGE}" \
             --sort-by=~CREATE_TIME --limit=1 --format='value(name)')"
           LATEST="${LATEST##*/}"   # keep only the version id
           echo "version=${LATEST}" >> "$GITHUB_OUTPUT"
@@ -109,7 +110,7 @@ jobs:
           rm -rf pull extracted && mkdir -p pull extracted
           gcloud artifacts generic download \
             --project='${{ steps.env.outputs.project }}' --location="${AR_LOCATION}" \
-            --repository="${AR_REPO}" --package="${AR_REPO}" \
+            --repository="${AR_REPO}" --package="${PACKAGE}" \
             --version="${LATEST}" --destination=pull
           tar -xzf pull/*.tar.gz -C extracted
 
@@ -121,6 +122,6 @@ jobs:
 
       - name: Summary
         run: |
-          echo "Published dig-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "to ${{ steps.env.outputs.env_name }} hub project ${{ steps.env.outputs.project }} (repo ${AR_REPO})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published package ${PACKAGE} version ${{ steps.pkg.outputs.version }} to repo ${AR_REPO}" >> "$GITHUB_STEP_SUMMARY"
+          echo "in ${{ steps.env.outputs.env_name }} hub project ${{ steps.env.outputs.project }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Deployed AR version ${{ steps.deploy.outputs.version }} -> gs://${{ steps.env.outputs.bucket }}/dbt (models/${MODULE})" >> "$GITHUB_STEP_SUMMARY"
