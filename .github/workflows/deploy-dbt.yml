@@ -88,10 +88,12 @@ jobs:
             --version="${{ steps.pkg.outputs.version }}" \
             --source="dbt-${{ steps.pkg.outputs.version }}.tar.gz"
 
-      # Deploy the LATEST artifact from Artifact Registry (source of truth) to the
-      # shared Composer bucket. Syncs the ENTIRE dbt project under this repo's
-      # module prefix (gs://bucket/<module>/) so repos never collide. rsync with
-      # --checksums-only uploads only changed/new files and removes deleted ones.
+      # Deploy the LATEST artifact from Artifact Registry (source of truth) into a
+      # single shared dbt/ folder in the Composer bucket, where all repos merge.
+      # Step 1: upload shared project files + this module's models with NO delete
+      #         (so it never removes other repos' files in the shared folder).
+      # Step 2: reconcile THIS module's models subtree with a scoped delete, so
+      #         files removed from this repo are cleaned up without touching others.
       - name: Deploy latest AR artifact to Composer bucket
         id: deploy
         run: |
@@ -111,12 +113,14 @@ jobs:
             --version="${LATEST}" --destination=pull
           tar -xzf pull/*.tar.gz -C extracted
 
-          gcloud storage rsync "extracted" \
-            "gs://${{ steps.env.outputs.bucket }}/${MODULE}" \
+          BUCKET="gs://${{ steps.env.outputs.bucket }}/dbt"
+          gcloud storage rsync extracted "${BUCKET}" \
+            --recursive --checksums-only
+          gcloud storage rsync "extracted/models/${MODULE}" "${BUCKET}/models/${MODULE}" \
             --recursive --checksums-only --delete-unmatched-destination-objects
 
       - name: Summary
         run: |
           echo "Published dig-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "to ${{ steps.env.outputs.env_name }} hub project ${{ steps.env.outputs.project }} (repo ${AR_REPO})" >> "$GITHUB_STEP_SUMMARY"
-          echo "Deployed AR version ${{ steps.deploy.outputs.version }} (full dbt project) -> gs://${{ steps.env.outputs.bucket }}/${MODULE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Deployed AR version ${{ steps.deploy.outputs.version }} -> gs://${{ steps.env.outputs.bucket }}/dbt (models/${MODULE})" >> "$GITHUB_STEP_SUMMARY"
