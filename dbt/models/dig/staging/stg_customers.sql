@@ -13,3 +13,5 @@ select
     last_name,
     concat(first_name, ' ', last_name) as full_name
 from source
+
+-- touched 2ca2005
