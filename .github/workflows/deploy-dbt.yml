@@ -112,7 +112,7 @@ jobs:
 
           gcloud storage rsync "extracted/models/${MODULE}" \
             "gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" \
-            --recursive --delete-unmatched-destination-objects
+            --recursive --checksums-only --delete-unmatched-destination-objects
 
       - name: Summary
         run: |
