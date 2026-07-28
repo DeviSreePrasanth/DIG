@@ -89,8 +89,9 @@ jobs:
             --source="dbt-${{ steps.pkg.outputs.version }}.tar.gz"
 
       # Deploy the LATEST artifact from Artifact Registry (source of truth) to the
-      # shared Composer bucket. rsync uploads only changed/new files and removes
-      # deleted ones, scoped to this module's folder so repos never collide.
+      # shared Composer bucket. Syncs the ENTIRE dbt project under this repo's
+      # module prefix (gs://bucket/<module>/) so repos never collide. rsync with
+      # --checksums-only uploads only changed/new files and removes deleted ones.
       - name: Deploy latest AR artifact to Composer bucket
         id: deploy
         run: |
@@ -110,12 +111,12 @@ jobs:
             --version="${LATEST}" --destination=pull
           tar -xzf pull/*.tar.gz -C extracted
 
-          gcloud storage rsync "extracted/models/${MODULE}" \
-            "gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" \
+          gcloud storage rsync "extracted" \
+            "gs://${{ steps.env.outputs.bucket }}/${MODULE}" \
             --recursive --checksums-only --delete-unmatched-destination-objects
 
       - name: Summary
         run: |
           echo "Published dig-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "to ${{ steps.env.outputs.env_name }} hub project ${{ steps.env.outputs.project }} (repo ${AR_REPO})" >> "$GITHUB_STEP_SUMMARY"
-          echo "Deployed AR version ${{ steps.deploy.outputs.version }} -> gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Deployed AR version ${{ steps.deploy.outputs.version }} (full dbt project) -> gs://${{ steps.env.outputs.bucket }}/${MODULE}" >> "$GITHUB_STEP_SUMMARY"
