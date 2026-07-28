@@ -22,6 +22,10 @@ env:
   SERVICE_ACCOUNT: gha-publisher@dsf-dev-poc.iam.gserviceaccount.com
   AR_LOCATION: us
   AR_REPO: dig-dbt
+  # Module name namespaces this repo's models inside the shared Composer bucket.
+  MODULE: dig
+  DEV_BUCKET: dsf-dev-poc-composer-dbt
+  PROD_BUCKET: dsf-prod-poc-composer-dbt
 
 jobs:
   publish-dbt:
@@ -42,10 +46,12 @@ jobs:
           if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
             echo "project=${DEV_PROJECT_ID}"   >> "$GITHUB_OUTPUT"
             echo "wip=${DEV_WIP}"              >> "$GITHUB_OUTPUT"
+            echo "bucket=${DEV_BUCKET}"        >> "$GITHUB_OUTPUT"
             echo "env_name=dev"                >> "$GITHUB_OUTPUT"
           elif [ "${GITHUB_REF}" = "refs/heads/release" ]; then
             echo "project=${PROD_PROJECT_ID}" >> "$GITHUB_OUTPUT"
             echo "wip=${PROD_WIP}"             >> "$GITHUB_OUTPUT"
+            echo "bucket=${PROD_BUCKET}"       >> "$GITHUB_OUTPUT"
             echo "env_name=prod"               >> "$GITHUB_OUTPUT"
           else
             echo "Unsupported branch: ${GITHUB_REF} - refusing to deploy." >&2
@@ -82,7 +88,16 @@ jobs:
             --version="${{ steps.pkg.outputs.version }}" \
             --source="dbt-${{ steps.pkg.outputs.version }}.tar.gz"
 
+      # Sync this module's models into the shared Composer bucket, namespaced by
+      # module so the same model name from another repo cannot collide.
+      - name: Sync dbt models to Composer bucket
+        run: |
+          gcloud storage rsync "dbt/models/${MODULE}" \
+            "gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" \
+            --recursive --delete-unmatched-destination-objects
+
       - name: Summary
         run: |
           echo "Published dig-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "to ${{ steps.env.outputs.env_name }} hub project ${{ steps.env.outputs.project }} (repo ${AR_REPO})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Synced dbt/models/${MODULE} -> gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" >> "$GITHUB_STEP_SUMMARY"
