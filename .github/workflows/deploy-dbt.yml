@@ -88,11 +88,29 @@ jobs:
             --version="${{ steps.pkg.outputs.version }}" \
             --source="dbt-${{ steps.pkg.outputs.version }}.tar.gz"
 
-      # Sync this module's models into the shared Composer bucket, namespaced by
-      # module so the same model name from another repo cannot collide.
-      - name: Sync dbt models to Composer bucket
+      # Deploy the LATEST artifact from Artifact Registry (source of truth) to the
+      # shared Composer bucket. rsync uploads only changed/new files and removes
+      # deleted ones, scoped to this module's folder so repos never collide.
+      - name: Deploy latest AR artifact to Composer bucket
+        id: deploy
         run: |
-          gcloud storage rsync "dbt/models/${MODULE}" \
+          set -e
+          LATEST="$(gcloud artifacts versions list \
+            --project='${{ steps.env.outputs.project }}' --location="${AR_LOCATION}" \
+            --repository="${AR_REPO}" --package="${AR_REPO}" \
+            --sort-by=~CREATE_TIME --limit=1 --format='value(name)')"
+          LATEST="${LATEST##*/}"   # keep only the version id
+          echo "version=${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "Latest ${AR_REPO} version: ${LATEST}"
+
+          rm -rf pull extracted && mkdir -p pull extracted
+          gcloud artifacts generic download \
+            --project='${{ steps.env.outputs.project }}' --location="${AR_LOCATION}" \
+            --repository="${AR_REPO}" --package="${AR_REPO}" \
+            --version="${LATEST}" --destination=pull
+          tar -xzf pull/*.tar.gz -C extracted
+
+          gcloud storage rsync "extracted/models/${MODULE}" \
             "gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" \
             --recursive --delete-unmatched-destination-objects
 
@@ -100,4 +118,4 @@ jobs:
         run: |
           echo "Published dig-dbt version ${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "to ${{ steps.env.outputs.env_name }} hub project ${{ steps.env.outputs.project }} (repo ${AR_REPO})" >> "$GITHUB_STEP_SUMMARY"
-          echo "Synced dbt/models/${MODULE} -> gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Deployed AR version ${{ steps.deploy.outputs.version }} -> gs://${{ steps.env.outputs.bucket }}/models/${MODULE}" >> "$GITHUB_STEP_SUMMARY"
